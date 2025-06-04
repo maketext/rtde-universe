@@ -149,13 +149,12 @@ def unpack_pause_package(body):
 
 outputContext = CurrentContext()
 
-class TCP:
+class TCPClient:
+    def __init__(self):
+        pass
     def connect(self):
-        self.hostname = "localhost"
+        self.hostname = "192.168.0.61"
         self.port = 30004
-
-        if self.__sock:
-            return
 
         self.__buf = b""  # buffer data in binary format
         try:
@@ -171,7 +170,7 @@ class TCP:
 
         cmd = Command.RTDE_REQUEST_PROTOCOL_VERSION
         payload = struct.pack(">H", RTDE_PROTOCOL_VERSION_2)
-        success = self.__sendall(cmd, payload)
+        success = self.sendall(cmd, payload)
         if success:
             self.__protocolVersion = RTDE_PROTOCOL_VERSION_2
         return success
@@ -181,17 +180,19 @@ class TCP:
             self.__sock.close()
             self.__sock = None
 
-    def __sendall(self, command, payload=b""):
+    def sendall(self, command, payload=b""):
         # > 빅엔디안
         # H unsinged short (2 bytes integer)
         # B unsigned char (1 ascii character)
         fmt = ">HB"
         size = struct.calcsize(fmt) + len(payload)
         buf = struct.pack(fmt, size, command) + payload
-        print("SEND: " + buf)
-        self.__sock.sendall(buf)
+        print("SEND: ", buf)
 
-    def __recv(self, context : CurrentContext):
+        self.__sock.sendall(buf)
+        return True
+
+    def recv(self, context : CurrentContext):
         global CurrentRTDEVersion
         buf = self.__sock.recv(256)
         if len(buf) < 3:
@@ -226,22 +227,21 @@ class TCP:
 
         return result
 
-tcp = TCP()
+tcp = TCPClient()
 
 
-def __sendAndReceive(command, payload):
-    tcp.__sendall(command, payload)
-    return tcp.__recv()
+def sendAndReceive(command, payload):
+    pass
 
 def send_input_setup(context : CurrentContext, variables : list):
     cmd = Command.RTDE_CONTROL_PACKAGE_SETUP_INPUTS
     payload = bytearray(",".join(variables), "utf-8")
     print(payload)
-    tcp.__sendall(cmd, payload)
-    tcp.__recv(context)
+    tcp.sendall(cmd, payload)
+    tcp.recv(context)
 
 def send_output_setup(context, variables, types, frequency=250): #125
-    def __list_equals(self, l1, l2):
+    def __list_equals(l1, l2):
         if len(l1) != len(l2):
             return False
         for i in range(len((l1))):
@@ -251,8 +251,8 @@ def send_output_setup(context, variables, types, frequency=250): #125
     cmd = Command.RTDE_CONTROL_PACKAGE_SETUP_OUTPUTS
     payload = struct.pack(">d", frequency)
     payload = payload + (",".join(variables).encode("utf-8"))
-    tcp.__sendall(cmd, payload)
-    tcp.__recv(context)
+    tcp.sendall(cmd, payload)
+    tcp.recv(context)
     if len(types) != 0 and not __list_equals(context.dataOutConfig.types, types):
         return "Data type inconsistency for output setup: " + str(types) + " - " + str(context.dataOutConfig.types)
     #context.dataOutConfig.setOutNames(variables)
@@ -309,11 +309,11 @@ context2 = CurrentContext()
 def init():
     tcp.connect()
 
-    tcp.__sendall(Command.RTDE_GET_URCONTROL_VERSION, b"")
-    tcp.__recv(context1)
+    tcp.sendall(Command.RTDE_GET_URCONTROL_VERSION, b"")
+    tcp.recv(context1)
 
-    tcp.__sendall(Command.RTDE_CONTROL_PACKAGE_START, b"")
-    tcp.__recv(context1)
+    tcp.sendall(Command.RTDE_CONTROL_PACKAGE_START, b"")
+    tcp.recv(context1)
 
     send_input_setup(context1, ['input_int_register_0', 'input_int_register_1', 'input_int_register_2'])
     send_input_setup(context2, ['input_double_register_0', 'input_double_register_1', 'input_double_register_2'])
@@ -321,10 +321,10 @@ def init():
 
 def sendData(context : CurrentContext, payload : list, fmt : bytes):
     data = Data()
-    data.unpack_recipe(struct.pack(">i", context.dataInConfig.id) + fmt) #id + fmt
+    data.unpack_recipe(struct.pack(">B", context.dataInConfig.id) + fmt) #id + fmt
     packed = data.pack(payload)
     data.unpack(packed)
-    tcp.__sendall(Command.RTDE_DATA_PACKAGE, packed)
+    tcp.sendall(Command.RTDE_DATA_PACKAGE, packed)
 
 def setInt3(data): #[1, 2, 3]
     sendData(context1, data, b"VECTOR3INT32")
@@ -333,8 +333,8 @@ def setDouble3(data): #[.1, .2, .3]
     sendData(context2, data, b"VECTOR3D")
 
 def pause():
-    tcp.__sendall(Command.RTDE_CONTROL_PACKAGE_PAUSE, b"")
-    tcp.__recv(context1)
+    tcp.sendall(Command.RTDE_CONTROL_PACKAGE_PAUSE, b"")
+    tcp.recv(context1)
 
 def stop():
     tcp.disconnect()
